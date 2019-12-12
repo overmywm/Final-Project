@@ -1,0 +1,496 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8" />
+    <title>Phaser 3 platformy shooty thing</title>
+    <script src="phaser.js"></script>
+    <style type="text/css">
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var config = {
+    type: Phaser.AUTO,
+    
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 300 },
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+gameWon = false;
+var player;
+var saw;
+var bombs;
+var platforms;
+var cursors;
+var ammo = 100;
+var gameOver = false;
+var ammoText;
+var jumpKey;
+var shootKey;
+var direction = 1, swapper = 1;
+var playerSpeed = 250;
+var playerJump;
+var baseVelocity = 0;
+var playerHP = 3;
+var uiY = 30;
+var AIdirection = 1;
+var ticker = 1;
+var number1 = Phaser.Math.Between(0, 5), number2 = Phaser.Math.Between(0, 5);
+enterAmmo = false;
+playerIFrame = false;
+hideText = false;
+
+
+var game = new Phaser.Game(config);
+
+function preload ()
+{
+    this.load.image('box', 'assets/sky.png');
+    this.load.image('ground', 'assets/platform.png');
+    this.load.image('star', 'assets/saw.png');
+    this.load.image('bomb', 'assets/bomb.png');
+    this.load.spritesheet('dude', 'assets/dude.png', { frameWidth: 32, frameHeight: 48 });
+	
+	this.load.image('background', 'assets/images/background.png');
+	this.load.image('spike', 'assets/star.png');
+	this.load.image('stats', 'assets/stats.png');
+	//this.load.image('spike', 'assets/images/spike.png');
+  // At last image must be loaded with its JSON
+	this.load.atlas('player', 'assets/images/kenney_player.png','assets/images/kenney_player_atlas.json');
+	this.load.image('tiles', 'assets/tilesets/scifitiles-sheet.png');
+	this.load.image('tilesBG', 'assets/tilesets/TileBG.png');
+	this.load.image('dangerTile', 'assets/tilesets/dangerTile.png');
+	this.load.image('consoleTile', 'assets/consoleTile.png');
+	this.load.image('consoleTile2', 'assets/consoleTile2.png');
+
+  // Load the export Tiled JSON
+	this.load.tilemapTiledJSON('map', 'assets/tilemaps/level4.json');
+}
+
+function create ()
+{
+	var Bullet = new Phaser.Class({
+
+        Extends: Phaser.GameObjects.Image,
+
+        initialize:
+
+        function Bullet (scene)
+        {
+            Phaser.GameObjects.Image.call(this, scene, 0, 0, 'bomb');
+			
+        },
+
+        fire: function (x, y, direction)
+        {
+            this.setPosition(x, y);
+			this.speed = Phaser.Math.GetSpeed(500, direction);
+			this.vel
+            this.setActive(true);
+            this.setVisible(true);
+        },
+
+        update: function (time, delta)
+        {
+            this.x += this.speed * delta;
+
+            if (this.x > 1800)
+            {
+                this.setActive(false);
+                this.setVisible(false);
+            }
+        }
+
+    });
+
+
+
+	 bullets = this.physics.add.group({
+			classType: Bullet,
+			maxSize: 30,
+			runChildUpdate: true
+		});
+		
+	timedEvent = this.time.addEvent({ delay: 1000, callback: onEvent, callbackScope: this, loop: true });
+
+//import json map and tileset
+	const map = this.make.tilemap({ key: 'map' });
+	const tileset = map.addTilesetImage('tileset2', 'tiles');
+	const backDrop = map.addTilesetImage('tileset1', 'tilesBG');
+	const consoleTile = map.addTilesetImage('Switch', 'consoleTile');
+	const deadlyAcid = map.addTilesetImage('dangerTile', 'dangerTile');
+	const backgrounds = map.createStaticLayer('BackgroundLayer', backDrop, 0, 0);
+	const platforms = map.createStaticLayer('Platforms', tileset, 0, 0);
+	const deathPits = map.createStaticLayer('deadlyAcid', deadlyAcid, 0, 0);
+	const consoleCTRL = map.createStaticLayer('console', consoleTile, 0, 0);
+	const levelExit = map.createStaticLayer('Exit', tileset, 0, 0);
+	
+	
+	platforms.setCollisionByExclusion(-1, true);
+	deathPits.setCollisionByExclusion(-1, true);
+	levelExit.setCollisionByExclusion(-1, true);
+//interactable environment
+	controlBox1 = this.physics.add.group({
+	key: 'consoleTile2',
+	setXY: { x: 290, y: 740, stepX: 70 }
+    });
+
+//UI
+	this.add.image(135, uiY, 'stats').setScrollFactor(0);
+	this.add.image(381, uiY, 'stats').setScrollFactor(0);
+	hp1 = this.add.image(65, uiY, 'spike').setScrollFactor(0);
+	hp2 = this.add.image(115, uiY, 'spike').setScrollFactor(0);
+	hp3 = this.add.image(165, uiY, 'spike').setScrollFactor(0);
+	ammoText = this.add.text(205, uiY-15, 'Ammo: '+ammo, { fontSize: '32px', fill: '#111' }).setScrollFactor(0);
+	//hpText = this.add.text(35, uiY, 'HP: '+playerHP, { fontSize: '32px', fill: '#111' }).setScrollFactor(0);
+	
+    // The player and its settings
+    player = this.physics.add.sprite(100, 873, 'dude');
+	this.cameras.main.setBounds(0, 0, 1800, 480 * 2);
+    this.physics.world.setBounds(0, 0, 1800, 520 * 2);
+	this.cameras.main.startFollow(player);
+
+    this.cameras.main.followOffset.set(100, 0);
+    player.setCollideWorldBounds(true);
+	
+    //  Our player animations, turning, walking left and walking right.
+    this.anims.create({
+        key: 'left',
+        frames: this.anims.generateFrameNumbers('dude', { start: 0, end: 3 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'turn',
+        frames: [ { key: 'dude', frame: 4 } ],
+        frameRate: 20
+    });
+
+    this.anims.create({
+        key: 'right',
+        frames: this.anims.generateFrameNumbers('dude', { start: 5, end: 8 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    //  Input Events
+    cursors = this.input.keyboard.createCursorKeys();
+	jumpKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+	shootKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+
+
+    //  Some saws to avoid, 12 in total, evenly spaced 70 pixels apart along the x axis
+    saw = this.physics.add.group({
+        key: 'star',
+        repeat: 15,
+        setXY: { x: 12, y: 400, stepX: 200 }
+		
+    });
+	
+	
+
+	
+
+
+
+    saw.children.iterate(function (child) {
+
+        //  Give each star a slightly different bounce
+        child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+
+    });
+
+    bombs = this.physics.add.group();
+
+    
+    //  Collide the player and the saw with the platforms
+    this.physics.add.collider(player, platforms);
+    this.physics.add.collider(saw, platforms);
+    this.physics.add.collider(bombs, platforms);
+	this.physics.add.collider(controlBox1, platforms);
+
+    //  Checks to see if the player overlaps with any of the saw, if he does call the collectStar function
+    this.physics.add.overlap(player, saw, collectStar, null, this);
+	this.physics.add.overlap(bullets, saw, popStar, null, this);
+	this.physics.add.collider(player, deathPits, dieHorribly, null, this);
+	this.physics.add.collider(player, levelExit, leaveLevel, null, this);
+	this.physics.add.overlap(player, controlBox1, useBox1, null, this);
+    this.physics.add.collider(player, bombs, hitBomb, null, this);
+	this.physics.add.collider(bullets, bombs, shotBomb, null, this);
+	this.physics.add.collider(platforms, bullets, breakBomb, null, this);
+	gameOverText = this.add.text(300,300, 'GAME OVER', { fontSize: '64px', fill: '#FF0000' }).setVisible(false).setScrollFactor(0);
+	compBox = this.add.image(500, 400, 'box').setScrollFactor(0).setVisible(hideText);
+	compMsg = this.add.text(200,200, 'Answer as fast as you can', { fontSize: '38px', fill: '#000' }).setScrollFactor(0);
+	compQ = this.add.text(330,300, number1 + ' You Have '+ number2, { fontSize: '38px', fill: '#000' }).setScrollFactor(0);
+	gameWinText = this.add.text(300,300, 'Level Complete', { fontSize: '64px', fill: '#00FF00' }).setVisible(false).setScrollFactor(0);
+
+	
+	this.input.keyboard.on('keydown_NUMPAD_ZERO', function () {
+		ans = 0;
+		checkVal(ans);
+    }, this);
+	this.input.keyboard.on('keydown_NUMPAD_ONE', function () {
+        ans = 1;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_TWO', function () {
+        ans = 2;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_THREE', function () {
+        ans = 3;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_FOUR', function () {
+        ans = 4;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_FIVE', function () {
+        ans = 5;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_SIX', function () {
+        ans = 6;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_SEVEN', function () {
+		ans = 7;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_EIGHT', function () {
+        ans = 8;
+		checkVal(ans);
+    }, this);
+
+    this.input.keyboard.on('keydown_NUMPAD_NINE', function () {
+        ans = 9;
+		checkVal(ans);
+    }, this);
+	
+	function checkVal(ans){
+		if(ans == (number1+number2) && enterAmmo== true){
+			ammo = ammo +15;
+		}
+		number1 = Phaser.Math.Between(0, 5);
+		number2 = Phaser.Math.Between(0, 4);
+		compQ.setText(number1 + ' You Have '+ number2)
+	}
+	
+}
+
+function update ()
+{
+//always running
+	bullets.setVelocityY(0);
+	ammoText.setText('Ammo: ' + ammo);
+	compBox.setVisible(hideText);
+	compMsg.setVisible(hideText);
+	compQ.setVisible(hideText);
+	//hpText.setText('HP: ' + playerHP);
+	if(playerHP == 3){
+		hp3.setVisible(true);
+		hp2.setVisible(true);
+		hp1.setVisible(true);
+		
+	}
+	if(playerHP == 2){
+		hp3.setVisible(false);
+		hp2.setVisible(true);
+		hp1.setVisible(true);
+	}
+	if(playerHP == 1){
+		hp2.setVisible(false);
+		hp1.setVisible(true);
+	}
+	if(playerHP == 0){
+		hp1.setVisible(false);
+		gameOver = true
+	}
+	if (gameOver)
+    {
+		player.setTint(0xff0000);
+		gameOverText.setVisible(true);
+		if(Phaser.Input.Keyboard.JustDown(shootKey)){
+		this.physics.resume();
+
+		player.setTint();
+		gameOverText.setVisible(false);
+		player.anims.play('turn');
+		player.setX(100);
+		player.setY(873);
+		playerHP = 3;
+		gameOver = false;
+		}
+		return;
+    }
+	
+	if (gameWon)
+    {
+		player.setTint(0x7CFC00);
+		gameWinText.setVisible(true);
+		if(Phaser.Input.Keyboard.JustDown(shootKey)){
+		this.physics.resume();
+
+		player.setTint();
+		gameWinText.setVisible(false);
+		player.anims.play('turn');
+		player.setX(100);
+		player.setY(873);
+		playerHP = 3;
+		gameOver = false;
+		gameWon = false;
+		}
+		return;
+    }
+	
+
+    if (cursors.left.isDown)
+    {
+        player.setVelocityX(-playerSpeed);
+		direction = -1;
+        player.anims.play('left', true);
+		this.cameras.main.followOffset.x = -100;
+    }
+    else if (cursors.right.isDown)
+    {
+        player.setVelocityX(playerSpeed);
+		direction = 1;
+        player.anims.play('right', true);
+		this.cameras.main.followOffset.x = -100;
+    }
+    else
+    {
+        player.setVelocityX(baseVelocity);
+
+        player.anims.play('turn');
+    }
+
+    if (jumpKey.isDown && player.body.onFloor())
+    {
+        player.setVelocityY(-280);
+	}
+	
+	if (Phaser.Input.Keyboard.JustDown(shootKey) && ammo > 0)
+    {
+        var bullet = bullets.get();
+        if (bullet)
+        {
+            bullet.fire(player.x, player.y, direction);
+			ammo --;
+        }
+    }
+}
+
+function collectStar (player, star)
+{
+    star.disableBody(true, true);
+	if(playerIFrame == false){
+		playerHP--;
+		swapper = 1;
+		flashHurt = this.time.addEvent({ delay: 300, callback: painFlash, callbackScope: this, loop: true });
+	}
+}
+
+function hitBomb (player, bomb)
+{
+    this.physics.pause();
+
+    player.setTint(0xff0000);
+
+    player.anims.play('turn');
+
+    gameOver = true;
+}
+function leaveLevel(player, levelExit){
+	this.physics.pause();
+
+    player.setTint(0x7CFC00);
+
+    player.anims.play('turn');
+
+    gameWon = true;
+}
+function shotBomb (bullets, bomb){
+	bomb.disableBody(true, true);
+}
+
+function popStar (bullets, star){
+	star.disableBody(true, true);
+	bullets.setActive(false);
+	bullets.setVisible(false);
+}
+function breakBomb(bullets, platforms){
+	bullets.setActive(false);
+	bullets.setVisible(false);
+}
+function dieHorribly(player, deathPits){
+	this.physics.pause();
+
+    player.setTint(0xff0000);
+
+    player.anims.play('turn');
+
+    gameOver = true;
+}
+
+
+
+function useBox1(player, controlBox1){
+	if(cursors.up.isDown){
+		controlBox1.disableBody(true, true);
+		hideText = true;
+		timeAnswers = this.time.addEvent({ delay: 4000, callback: closeAmmo, callbackScope: this, loop: false });
+		enterAmmo = true;
+	}
+}
+function closeAmmo(){
+	hideText = false;
+	enterAmmo = false;
+}
+function onEvent(){
+	saw.setVelocityY(600);
+	saw.setVelocityX(100*AIdirection);
+	AIdirection = -1*AIdirection;
+}
+
+function painFlash(){
+    if (ticker>0){
+		player.setTint(0xff0000);
+	}else{
+		player.setTint();
+	}
+    ticker = ticker *-1;
+	swapper++;
+	playerIFrame = true;
+    if (swapper === 6)
+    {
+        flashHurt.remove(false);
+		playerIFrame = false;
+		ticker = -1;
+		player.setTint();
+    }
+}
+	
+</script>
+
+</body>
+</html>
